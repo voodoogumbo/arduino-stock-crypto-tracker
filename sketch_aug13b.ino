@@ -35,6 +35,15 @@ void setMAD(uint8_t v) {
   bus->beginWrite(); bus->writeCommand(0x36); bus->write(v); bus->endWrite();
 }
 
+
+void colorBars() {
+  gfx->fillScreen(BLACK);
+  int w = gfx->width() / 3;
+  gfx->fillRect(0,      0, w, gfx->height(), RGB565(255,0,0));   // should be vivid RED
+  gfx->fillRect(w,      0, w, gfx->height(), RGB565(0,255,0));   // GREEN  
+  gfx->fillRect(2*w,    0, w, gfx->height(), RGB565(0,0,255));   // BLUE
+}
+
 void printCentered(const String &txt, int y, uint8_t textSize) {
   int16_t x1, y1; uint16_t w, h;
   gfx->setTextSize(textSize);
@@ -57,7 +66,7 @@ void drawCrypto(const char* name, const char* symbol, float price, float change 
 
   // Title
   String title = String(name) + " (" + symbol + ")";
-  printCentered(title, 12, 3);
+  printCentered(title, 12, 4);
 
   // Price big - different decimal places for different coins
   char buf[32];
@@ -79,7 +88,7 @@ void drawCrypto(const char* name, const char* symbol, float price, float change 
     if (change > 0) {
       changeColor = RGB565(0, 255, 0); // Bright green for gains
     } else if (change < 0) {
-      changeColor = RGB565(255, 0, 0); // Bright red for losses
+      changeColor = RGB565(220, 60, 40); // Toned down red for losses
     }
     
     gfx->setTextColor(changeColor, BLACK);
@@ -95,7 +104,7 @@ void drawCrypto(const char* name, const char* symbol, float price, float change 
     }
     
     String changeLine = String((change >= 0) ? "+$" : "-$") + String(abs(atof(changeBuf)));
-    printCentered(changeLine, (gfx->height() - (int)bh) / 2 + 40, 3);
+    printCentered(changeLine, (gfx->height() - (int)bh) / 2 + 40, 4);
     
     // Reset text color back to white
     gfx->setTextColor(WHITE, BLACK);
@@ -106,8 +115,16 @@ void drawCrypto(const char* name, const char* symbol, float price, float change 
     printCentered(statusLine, gfx->height() - 28, 2);
   }
 
-  // White frame
-  gfx->drawRect(0, 0, gfx->width(), gfx->height(), WHITE);
+  // Dynamic frame color based on market performance
+  uint16_t borderColor = WHITE; // Default for neutral/no data
+  if (!isnan(change)) {
+    if (change > 0) {
+      borderColor = RGB565(0, 255, 0); // Green for gains
+    } else if (change < 0) {
+      borderColor = RGB565(220, 60, 40); // Red for losses
+    }
+  }
+  gfx->drawRect(0, 0, gfx->width(), gfx->height(), borderColor);
 }
 
 // Helper function to display current asset
@@ -153,6 +170,38 @@ void drawCurrentAsset(const char* statusLine = nullptr) {
         Serial.println("DEBUG: SNOW data missing");
       }
       break;
+  }
+}
+
+// ---------- Portfolio helpers ----------
+float calculatePortfolioValue() {
+  float totalValue = 0.0;
+  if (!isnan(g_lastSolPrice)) totalValue += g_lastSolPrice * SOL_HOLDINGS;
+  if (!isnan(g_lastShibPrice)) totalValue += g_lastShibPrice * SHIB_HOLDINGS;
+  if (!isnan(g_lastMsftPrice)) totalValue += g_lastMsftPrice * MSFT_HOLDINGS;
+  if (!isnan(g_lastPltrPrice)) totalValue += g_lastPltrPrice * PLTR_HOLDINGS;
+  if (!isnan(g_lastSnowPrice)) totalValue += g_lastSnowPrice * SNOW_HOLDINGS;
+  return totalValue;
+}
+
+float calculatePortfolioChange() {
+  float totalChange = 0.0;
+  if (!isnan(g_lastSolChange)) totalChange += g_lastSolChange * SOL_HOLDINGS;
+  if (!isnan(g_lastShibChange)) totalChange += g_lastShibChange * SHIB_HOLDINGS;
+  if (!isnan(g_lastMsftChange)) totalChange += g_lastMsftChange * MSFT_HOLDINGS;
+  if (!isnan(g_lastPltrChange)) totalChange += g_lastPltrChange * PLTR_HOLDINGS;
+  if (!isnan(g_lastSnowChange)) totalChange += g_lastSnowChange * SNOW_HOLDINGS;
+  return totalChange;
+}
+
+void drawPortfolio(const char* statusLine = nullptr) {
+  float totalValue = calculatePortfolioValue();
+  float totalChange = calculatePortfolioChange();
+  
+  if (totalValue > 0) {
+    drawCrypto("Portfolio", "TOTAL", totalValue, totalChange, statusLine);
+  } else {
+    drawMessage("Portfolio", "No data available");
   }
 }
 
@@ -345,12 +394,36 @@ void setup() {
   while (!Serial) { ; }
   gfx->begin();
   gfx->setRotation(ROTATION);
-  setMAD(0xA8); // mirror fix
+  
+  // Force 16-bit RGB565 pixel format (ILI9488 default is often 18-bit)
+  bus->beginWrite();
+  bus->writeCommand(0x3A);    // COLMOD
+  bus->write(0x55);           // 16-bit/pixel, RGB565
+  bus->endWrite();
+  
+  // Set MADCTL: try RGB order first (0xA0 = MY | MV, without BGR bit)
+  setMAD(0xA0);               // If red looks blue, change this to 0xA8
+  
+  // Ensure display inversion OFF
+  bus->beginWrite();
+  bus->writeCommand(0x20);    // Display Inversion OFF
+  bus->endWrite();
+  
+  
+  // Test color channels - left bar should be RED
+  colorBars();
+  delay(3000);  // Show color test for 3 seconds
 
   if (!ensureWifiRealIP(3)) {
     drawMessage("Wi-Fi failed", "Showing last price");
     delay(800);
-    if (!isnan(g_lastSolPrice) || !isnan(g_lastShibPrice) || !isnan(g_lastMsftPrice) || !isnan(g_lastPltrPrice) || !isnan(g_lastSnowPrice)) drawCurrentAsset("Offline");
+    if (!isnan(g_lastSolPrice) || !isnan(g_lastShibPrice) || !isnan(g_lastMsftPrice) || !isnan(g_lastPltrPrice) || !isnan(g_lastSnowPrice)) {
+      if (PORTFOLIO_MODE) {
+        drawPortfolio("Offline");
+      } else {
+        drawCurrentAsset("Offline");
+      }
+    }
     else drawMessage("No price yet", "Offline");
     return;
   }
@@ -368,7 +441,11 @@ void setup() {
   bool stockSuccess = fetchStocks();
   
   if (cryptoSuccess || stockSuccess) {
-    drawCurrentAsset("Updated just now");
+    if (PORTFOLIO_MODE) {
+      drawPortfolio("Updated just now");
+    } else {
+      drawCurrentAsset("Updated just now");
+    }
   } else {
     drawMessage("Price fetch failed", "Will retry");
   }
@@ -378,11 +455,20 @@ void loop() {
   static uint32_t lastFetch = 0;
   static uint32_t lastCycle = 0;
 
-  // Cycle between assets every 15 seconds
-  if (millis() - lastCycle > 15000UL) {
-    g_currentAsset = (g_currentAsset + 1) % 5; // Cycle through 0, 1, 2, 3, 4
-    drawCurrentAsset("Win Each Day");
-    lastCycle = millis();
+  // Display logic based on mode
+  if (PORTFOLIO_MODE) {
+    // Portfolio mode: refresh display every 15 seconds
+    if (millis() - lastCycle > 15000UL) {
+      drawPortfolio("Win Each Day");
+      lastCycle = millis();
+    }
+  } else {
+    // Individual ticker mode: cycle between assets every 15 seconds
+    if (millis() - lastCycle > 15000UL) {
+      g_currentAsset = (g_currentAsset + 1) % 5; // Cycle through 0, 1, 2, 3, 4
+      drawCurrentAsset("Win Each Day");
+      lastCycle = millis();
+    }
   }
 
   // Refresh every 30 min
@@ -399,11 +485,19 @@ void loop() {
     bool stockSuccess = fetchStocks();
     
     if (cryptoSuccess || stockSuccess) {
-      drawCurrentAsset("Updated");
+      if (PORTFOLIO_MODE) {
+        drawPortfolio("Updated");
+      } else {
+        drawCurrentAsset("Updated");
+      }
     } else {
       // keep last good price on screen; flash a quick note
       if (!isnan(g_lastSolPrice) || !isnan(g_lastShibPrice) || !isnan(g_lastMsftPrice) || !isnan(g_lastPltrPrice) || !isnan(g_lastSnowPrice)) {
-        drawCurrentAsset("Fetch failed");
+        if (PORTFOLIO_MODE) {
+          drawPortfolio("Fetch failed");
+        } else {
+          drawCurrentAsset("Fetch failed");
+        }
       } else {
         drawMessage("Price fetch failed", "No prior data");
       }

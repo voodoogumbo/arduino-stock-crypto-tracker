@@ -5,9 +5,13 @@ A real-time financial asset tracker that cycles through cryptocurrencies and sto
 ## ✨ Features
 
 - **Real-time price tracking** for 5 assets (expandable)
+- **Portfolio mode** - Toggle between individual assets or combined portfolio view
 - **Dual API integration**: CoinGecko for crypto, Finnhub for stocks  
-- **Dollar change display** with color coding (green gains, red losses)
+- **Dynamic visual feedback** - Border and text colors reflect market performance
+- **Enhanced typography** - Larger, more readable text for names and changes
+- **Dollar change display** with vivid color coding (green gains, red losses)
 - **Auto-cycling display** every 15 seconds with "Win Each Day" messaging
+- **Color-corrected display** with proper RGB channel ordering
 - **Robust error handling** with automatic retry logic
 - **WiFi connectivity** with automatic reconnection
 - **Clean, readable interface** optimized for trading desk viewing
@@ -19,6 +23,36 @@ A real-time financial asset tracker that cycles through cryptocurrencies and sto
 - **MSFT** (Microsoft) - Stock
 - **PLTR** (Palantir) - Stock
 - **SNOW** (Snowflake) - Stock
+
+## 💼 Portfolio Mode
+
+**NEW!** Switch between individual asset tracking and portfolio overview:
+
+### Individual Mode (Default)
+- Cycles through each asset every 15 seconds
+- Shows individual price and daily change
+- Perfect for monitoring specific assets
+
+### Portfolio Mode  
+- Shows total portfolio value and daily P&L
+- Aggregates all your holdings into one view
+- Dynamic colors reflect overall portfolio performance
+- Green border/text for profitable days, red for losses
+
+### Setup Portfolio Mode
+1. **Configure holdings** in `config.h`:
+   ```cpp
+   const bool PORTFOLIO_MODE = true;  // Enable portfolio view
+   const float SOL_HOLDINGS = 25.0;   // Your actual SOL holdings
+   const float MSFT_HOLDINGS = 10.0;  // Your actual MSFT shares
+   // ... set all your holdings
+   ```
+
+2. **Example calculation**:
+   - 25 SOL @ $150 = $3,750
+   - 10 MSFT @ $420 = $4,200  
+   - **Total Portfolio: $7,950**
+   - **Daily Change: +$125** (green border/text)
 
 ## 🛠️ Hardware Requirements
 
@@ -173,6 +207,19 @@ if (millis() - lastCycle > 15000UL) // 15 seconds default
 const uint8_t ROTATION = 1; // 0=0°, 1=90°, 2=180°, 3=270°
 ```
 
+### Portfolio Settings
+```cpp
+// Portfolio mode toggle
+const bool PORTFOLIO_MODE = false; // true = portfolio view, false = individual assets
+
+// Your actual holdings (adjust to match your investments)
+const float SOL_HOLDINGS = 10.0;       // SOL coins owned
+const float SHIB_HOLDINGS = 1000000.0; // SHIB coins owned
+const float MSFT_HOLDINGS = 5.0;       // MSFT shares owned
+const float PLTR_HOLDINGS = 50.0;      // PLTR shares owned  
+const float SNOW_HOLDINGS = 3.0;       // SNOW shares owned
+```
+
 ## 🔧 Troubleshooting
 
 ### Common Issues
@@ -191,6 +238,18 @@ const uint8_t ROTATION = 1; // 0=0°, 1=90°, 2=180°, 3=270°
 - Check wiring connections
 - Verify display orientation with ROTATION setting
 - Ensure 5V power supply can handle display current
+
+**Color Issues (Purple/Pink Reds)**
+If red colors appear purple or pink on your ILI9488 display:
+1. **Built-in color correction** automatically handles most issues
+2. **Test with color bars** - On boot, you'll see red/green/blue bars for 3 seconds
+3. **If left bar is blue instead of red**:
+   - Change line ~419 in setup(): `setMAD(0xA0);` → `setMAD(0xA8);`
+   - This flips BGR bit to correct color channel ordering
+4. **Color correction features**:
+   - Forces 16-bit RGB565 pixel format
+   - Disables display inversion
+   - Corrects color channel ordering
 
 **Compilation Errors**
 - Ensure all libraries are installed
